@@ -8,12 +8,12 @@ const {
   EmbedBuilder,
 } = require("discord.js");
 const moment = require("moment-timezone");
-const races = require("./races.json");
+const data = require("./races.json");
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // ------------------- Bot Ready -------------------
-client.once("clientReady", () => {
+client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
@@ -21,12 +21,43 @@ client.once("clientReady", () => {
 function getNextRace() {
   const now = moment();
   return (
-    races.find((race) =>
-      Object.values(race.sessions).some((t) =>
-        moment.tz(t, "YYYY-MM-DD HH:mm", "Asia/Colombo").isAfter(now),
-      ),
+    data.races.find((race) =>
+      Object.values(race.sessions).some((t) => moment(t).isAfter(now)),
     ) || null
   );
+}
+
+function formatCountdown(time) {
+  const now = moment();
+  const diff = moment(time).diff(now);
+  if (diff <= 0) return "✅";
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const minutes = Math.floor((diff / (1000 * 60)) % 60);
+
+  return `${days}d ${hours}h ${minutes}m`;
+}
+
+function sessionEmoji(session) {
+  switch (session.toLowerCase()) {
+    case "free practice 1":
+    case "free practice 2":
+    case "practice":
+      return "🟢";
+    case "qualifying 1":
+    case "qualifying 2":
+    case "qualifying":
+      return "🏎️";
+    case "sprint":
+      return "⚡";
+    case "warm up":
+      return "☀️";
+    case "race":
+      return "🏁";
+    default:
+      return "📌";
+  }
 }
 
 // ------------------- Slash Commands -------------------
@@ -35,6 +66,19 @@ const commands = [
     .setName("next")
     .setDescription(
       "Shows the full schedule of the next MotoGP weekend in your local time",
+    ),
+  new SlashCommandBuilder()
+    .setName("standings")
+    .setDescription("Shows the current championship standings")
+    .addStringOption((option) =>
+      option
+        .setName("type")
+        .setDescription("Choose riders or constructors")
+        .setRequired(true)
+        .addChoices(
+          { name: "Riders", value: "riders" },
+          { name: "Constructors", value: "constructors" },
+        ),
     ),
   new SlashCommandBuilder()
     .setName("support")
@@ -59,6 +103,7 @@ const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // ---------- /next ----------
   if (interaction.commandName === "next") {
     const nextRace = getNextRace();
     if (!nextRace) return interaction.reply("🎉 No upcoming races!");
@@ -69,42 +114,11 @@ client.on("interactionCreate", async (interaction) => {
       .setFooter({ text: "MotoGP 2025 Schedule" });
 
     for (const [session, time] of Object.entries(nextRace.sessions)) {
-      const sessionTime = moment.tz(time, "YYYY-MM-DD HH:mm", "Asia/Colombo");
-
-      // Emoji for session
-      let emoji = "📌";
-      switch (session.toLowerCase()) {
-        case "free practice 1":
-        case "practice":
-        case "free practice 2":
-          emoji = "🟢";
-          break;
-        case "qualifying 1":
-        case "qualifying 2":
-          emoji = "🏎️";
-          break;
-        case "sprint":
-          emoji = "⚡";
-          break;
-        case "warm up":
-          emoji = "☀️";
-          break;
-        case "race":
-          emoji = "🏁";
-          break;
-      }
-
-      // Discord timestamp for user local time
+      const sessionTime = moment(time).tz(moment.tz.guess());
       const unixTime = Math.floor(sessionTime.valueOf() / 1000);
       const displayTime = `<t:${unixTime}:f>`;
-
-      // Countdown
-      const now = moment();
-      const diff = sessionTime.diff(now);
-      const countdown =
-        diff > 0
-          ? `${Math.floor(diff / (1000 * 60 * 60 * 24))}d ${Math.floor((diff / (1000 * 60 * 60)) % 24)}h ${Math.floor((diff / (1000 * 60)) % 60)}m`
-          : "✅";
+      const countdown = formatCountdown(sessionTime);
+      const emoji = sessionEmoji(session);
 
       embed.addFields({
         name: `${emoji} ${session}`,
@@ -113,15 +127,47 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    await interaction.reply({ embeds: [embed] });
+    return interaction.reply({ embeds: [embed] });
   }
 
+  // ---------- /standings ----------
+  if (interaction.commandName === "standings") {
+    const type = interaction.options.getString("type");
+    const embed = new EmbedBuilder()
+      .setColor("#FFD700")
+      .setFooter({ text: "MotoGP 2025 Championship" });
+
+    if (type === "riders") {
+      embed.setTitle("🏆 Riders Championship Standings");
+      data.riders.slice(0, 15).forEach((driver) => {
+        embed.addFields({
+          name: `#${driver.rank} ${driver.name} (${driver.team})`,
+          value: `Points: ${driver.points}`,
+          inline: true,
+        });
+      });
+    } else if (type === "constructors") {
+      embed.setTitle("🏎️ Constructors Championship Standings");
+      data.constructors.forEach((team) => {
+        embed.addFields({
+          name: `${team.team}`,
+          value: `Points: ${team.points}`,
+          inline: true,
+        });
+      });
+    }
+
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  // ---------- /support ----------
   if (interaction.commandName === "support") {
-    await interaction.reply({
+    return interaction.reply({
       content:
         "☕ Support the developer:\n[Buy me a coffee](https://buymeacoffee.com/pramu.cc)\n🌐 Website: [vishwapramuditha.com](https://vishwapramuditha.com)",
       ephemeral: true,
     });
   }
 });
+
 client.login(process.env.TOKEN);
