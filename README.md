@@ -20,3 +20,18 @@ Stay updated with Free Practice, Qualifying, Sprint, Warm Up, and Race times –
 ---
 
 ## 📂 Project Structure
+motogp-bot/
+│
+├─ index.js # Main bot code
+├─ races.json # MotoGP 2025 schedule (editable)
+├─ package.json # Node.js dependencies
+└─ .env # Bot token & client ID (never share!)
+
+
+🤝 Support
+
+🌐 Website: vishwapramuditha.com
+
+☕ Buy Me a Coffee: buymeacoffee.com/pramu.cc
+
+📩 Contact: Discord @vishwa.prm
